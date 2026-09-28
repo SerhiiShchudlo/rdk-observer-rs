@@ -94,6 +94,10 @@ RDK-Observer should have clear non-functional deliverables, including maximum st
 
 The initial resource targets for RDK-Observer are approximately **5 MB maximum storage footprint**, **10 MB maximum DRAM usage**, and **below 5% CPU utilization** under normal operation. The component will run in a dedicated **cgroup** so these resource limits can be measured and, where appropriate, enforced.
 
+## Architecture
+
+![RDK-Observer architecture diagram](docs/architecture/architecture-diagrams/rdk-observer-arch.drawio.png)
+
 ## Architecture decisions
 
 - [ADR-0001: Collect System Resource Snapshots from procfs](docs/architecture/adr/0001-collect-system-resource-snapshots-from-procfs.md)
