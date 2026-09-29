@@ -8,6 +8,10 @@ It provides continuous, low-overhead observability of system resources across an
 
 In a resource-constrained device, the main goal is to understand **where the available resources are going** and which processes or kernel activities are consuming them. By combining system metrics, process-level information, and Linux observability mechanisms, the component helps track resource usage over time, correlate transient events with their likely cause, and provide the data needed to evaluate the efficiency of current components and support future architectural decisions.
 
+Unlike `top` or `htop`, which primarily provides an immediate view of resource usage while it is running, RDK-Observer is designed to collect timestamped observations continuously and export compact telemetry for long-term analysis. This makes it possible to identify gradual memory growth, recurring load patterns, intermittent peaks, and changes in process behavior that may not be visible in a momentary view.
+
+Periodic sampling alone can miss short-lived processes that start and exit between snapshots. RDK-Observer therefore uses eBPF process-lifecycle events to detect process creation, execution, and exit promptly. These events update the Process Registry and can trigger targeted per-PID observation, allowing transient activity to be correlated with the surrounding CPU, DRAM, network, and I/O measurements. Procfs remains the source of resource snapshots, while eBPF complements it by revealing when short-lived activity occurs.
+
 ## Planned tracking options
 
 The observer is intended to support multiple ways to choose what to track:
