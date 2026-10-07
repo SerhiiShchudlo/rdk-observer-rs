@@ -369,45 +369,50 @@ Backend push       every 30 seconds
 
 This allows detailed local observability without generating excessive network traffic.
 
-### Serialization and CBOR encoding
+### Serialization and Protobuf encoding
 
-Metrics are represented internally using Rust structures. Serde provides the serialization and deserialization abstraction used by those structures. Ciborium uses the Serde data model to encode and decode the metrics using CBOR (Concise Binary Object Representation).
+Observation records use Protocol Buffers (Protobuf), as decided in [ADR-0004](docs/architecture/adr/0004-observation-record-format-decision.md). Shared `.proto` definitions specify the record schema. [`prost-build`](https://docs.rs/prost-build/latest/prost_build/) generates Rust message types, and [`prost`](https://docs.rs/prost/latest/prost/) encodes and decodes them.
 
 ```text
-Rust metric structures
+Shared .proto schema
           │
           ▼
-        Serde
+      prost-build
           │
           ▼
-       Ciborium
+Rust message types
           │
           ▼
-         CBOR
+        prost
+          │
+          ▼
+    Protobuf bytes
 ```
 
-Example metric structure:
+Example record schema:
 
-```rust
-#[derive(Serialize, Deserialize)]
-struct ProcessMetrics {
-    pid: u32,
-    cpu: f32,
-    rss_kb: u64,
-    pss_kb: u64,
-    read_bytes: u64,
-    write_bytes: u64,
+```proto
+syntax = "proto3";
+
+message ProcessMetrics {
+    uint32 pid = 1;
+    optional float cpu = 2;
+    optional uint64 rss_kb = 3;
+    optional uint64 pss_kb = 4;
+    optional uint64 read_bytes = 5;
+    optional uint64 write_bytes = 6;
 }
 ```
 
-Encoding with Ciborium:
+Encoding a generated message with `prost`:
 
 ```rust
-let mut buffer = Vec::new();
-ciborium::ser::into_writer(&metrics, &mut buffer)?;
+use prost::Message;
+
+let buffer = metrics.encode_to_vec();
 ```
 
-CBOR provides a compact binary representation suitable for transferring telemetry from a resource-constrained gateway. Serde keeps the internal metric model independent from the encoding format, while Ciborium provides the CBOR implementation.
+Protobuf produced the smallest payloads and fastest serialization and deserialization in the recorded benchmarks. Explicit field presence distinguishes unavailable measurements from zero, and the observer and backend share the same schema.
 
 ### Backend communication
 
@@ -417,13 +422,10 @@ The Metric Collector Worker uses the `reqwest` crate for asynchronous communicat
 Metric Collector
        │
        ▼
-     Serde
+     prost
        │
        ▼
-    Ciborium
-       │
-       ▼
-      CBOR
+ Protobuf bytes
        │
        ▼
     reqwest
@@ -435,10 +437,10 @@ Metric Collector
 Backend Collector
 ```
 
-`reqwest` integrates with Tokio and sends the encoded CBOR payload asynchronously over HTTP. The HTTP request identifies the payload with:
+`reqwest` integrates with Tokio and sends the encoded Protobuf payload asynchronously over HTTP. The HTTP request identifies the binary payload with the [Protobuf MIME type](https://protobuf.dev/reference/protobuf/mime-types/):
 
 ```http
-Content-Type: application/cbor
+Content-Type: application/protobuf
 ```
 
 ### Overall data flow
@@ -471,11 +473,9 @@ Content-Type: application/cbor
                      ▼
              Metric Collector
                      │
-                   Serde
+                   prost
                      │
-                  Ciborium
-                     │
-                    CBOR
+               Protobuf bytes
                      │
                   reqwest
                      │
@@ -491,7 +491,7 @@ The architecture is based on five main principles:
 2. Use eBPF and Aya for process lifecycle and transient kernel events.
 3. Use Tokio tasks and `mpsc` channels to coordinate monitoring workers dynamically.
 4. Centralize aggregation and reporting in the Metric Collector Worker.
-5. Use Serde and Ciborium to encode compact CBOR telemetry for transmission to the backend.
+5. Use shared Protobuf schemas and `prost` to encode compact observation records for transmission to the backend.
 
 This architecture allows `rdk-observer` to understand where CPU, DRAM, I/O, and network resources are being consumed while minimizing the observer's own impact on a resource-constrained RDK gateway.
 
@@ -500,4 +500,4 @@ This architecture allows `rdk-observer` to understand where CPU, DRAM, I/O, and 
 - [ADR-0001: Collect System Resource Snapshots from procfs](docs/architecture/adr/0001-collect-system-resource-snapshots-from-procfs.md)
 - [ADR-0002: Schedule Per-Process Sampling Workers](docs/architecture/adr/0002-schedule-per-process-sampling-workers.md)
 - [ADR-0003: Trigger Process Capture with Aya and BPF Events](docs/architecture/adr/0003-trigger-process-capture-with-bpf-events.md)
-- [ADR-0004: Use CBOR for Observation Records](docs/architecture/adr/0004-use-cbor-for-observation-records.md)
+- [ADR-0004: Observation Record Format Decision](docs/architecture/adr/0004-observation-record-format-decision.md)
