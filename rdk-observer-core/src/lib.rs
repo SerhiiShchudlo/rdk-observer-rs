@@ -11,7 +11,7 @@ mod tests {
     use super::crate_version;
 
     #[test]
-    fn crate_version_matches_package_version() {
+    fn crate_version_matches_package_version( ) {
         assert_eq!(crate_version(), env!("CARGO_PKG_VERSION"));
     }
 }
