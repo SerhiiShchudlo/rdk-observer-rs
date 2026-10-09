@@ -14,4 +14,9 @@ mod tests {
     fn crate_version_matches_package_version() {
         assert_eq!(crate_version(), env!("CARGO_PKG_VERSION"));
     }
+
+    #[test]
+    fn test() {
+        assert_eq!(1, 2);
+    }
 }
