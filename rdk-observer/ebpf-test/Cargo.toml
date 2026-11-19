@@ -1,0 +1,16 @@
+[package]
+name = "sched-switch-ebpf"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aya-ebpf = "0.3"
+
+[[bin]]
+name = "sched-switch-ebpf"
+path = "src/main.rs"
+test = false
+bench = false
+
+[workspace]

@@ -4,6 +4,8 @@
 //! configuration loading, and logging initialization will be added here before
 //! handing control to the runtime once those interfaces are defined.
 
+mod scheduler_ebpf;
+
 #[cfg(feature = "tui")]
 mod tui;
 
@@ -45,6 +47,8 @@ async fn main() -> anyhow::Result<()> {
 
     let (process_registry, registry_writer) = ProcessRegistry::new();
     let mut join_set = JoinSet::<anyhow::Result<()>>::new();
+
+    join_set.spawn(scheduler_ebpf::run(process_registry.clone()));
 
     #[cfg(feature = "tui")]
     join_set.spawn(tui::run(process_registry.clone()));
