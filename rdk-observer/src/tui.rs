@@ -38,6 +38,7 @@ static RDK_PROCESS_PATTERNS: LazyLock<RegexSet> = LazyLock::new(|| {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProcessSortColumn {
     Cpu,
+    ContextSwitchRate,
     VirtualMemory,
     ResidentMemory,
     ProportionalMemory,
@@ -49,7 +50,8 @@ enum ProcessSortColumn {
 impl ProcessSortColumn {
     fn next(self) -> Self {
         match self {
-            Self::Cpu => Self::VirtualMemory,
+            Self::Cpu => Self::ContextSwitchRate,
+            Self::ContextSwitchRate => Self::VirtualMemory,
             Self::VirtualMemory => Self::ResidentMemory,
             Self::ResidentMemory => Self::ProportionalMemory,
             Self::ProportionalMemory => Self::ReadRate,
@@ -62,7 +64,8 @@ impl ProcessSortColumn {
     fn previous(self) -> Self {
         match self {
             Self::Cpu => Self::StartTime,
-            Self::VirtualMemory => Self::Cpu,
+            Self::ContextSwitchRate => Self::Cpu,
+            Self::VirtualMemory => Self::ContextSwitchRate,
             Self::ResidentMemory => Self::VirtualMemory,
             Self::ProportionalMemory => Self::ResidentMemory,
             Self::ReadRate => Self::ProportionalMemory,
@@ -94,6 +97,7 @@ impl ProcessFilter {
 #[derive(Default)]
 struct ProcessTotals {
     cpu: Option<f64>,
+    context_switch_rate: Option<f64>,
     virtual_memory: Option<u64>,
     resident_memory: Option<u64>,
     proportional_memory: Option<u64>,
@@ -211,6 +215,11 @@ impl TerminalUi {
                 header_cell("COMMAND", None, process_sort_column),
                 header_cell("TYPE", None, process_sort_column),
                 header_cell("CPU", Some(ProcessSortColumn::Cpu), process_sort_column),
+                header_cell(
+                    "CSW/s",
+                    Some(ProcessSortColumn::ContextSwitchRate),
+                    process_sort_column,
+                ),
                 header_cell(
                     "VIRT",
                     Some(ProcessSortColumn::VirtualMemory),
@@ -375,6 +384,7 @@ impl Drop for TerminalUi {
 }
 
 fn process_row(process: &RegisteredProcess) -> Row<'static> {
+    let context_switch_rate = process_context_switch_rate(process);
     let virtual_memory = process_virtual_memory(process);
     let resident_memory = process_resident_memory(process);
     let proportional_memory = process_proportional_memory(process);
@@ -391,6 +401,7 @@ fn process_row(process: &RegisteredProcess) -> Row<'static> {
         Cell::from(process.command().to_string()),
         Cell::from(process_type(process)).style(process_type_style),
         metric_cell(format_cpu(cpu_utilization(process))),
+        metric_cell(format_switch_rate(context_switch_rate)),
         metric_cell(format_bytes(virtual_memory.map(|value| value as f64))),
         metric_cell(format_bytes(resident_memory.map(|value| value as f64))),
         metric_cell(format_bytes(proportional_memory.map(|value| value as f64))),
@@ -426,6 +437,10 @@ fn calculate_process_totals(
 
 fn add_process_to_totals(totals: &mut ProcessTotals, process: &RegisteredProcess) {
     add_optional_float(&mut totals.cpu, cpu_utilization(process));
+    add_optional_float(
+        &mut totals.context_switch_rate,
+        process_context_switch_rate(process),
+    );
     add_optional_value(&mut totals.virtual_memory, process_virtual_memory(process));
     add_optional_value(
         &mut totals.resident_memory,
@@ -449,6 +464,7 @@ fn totals_row(
         Cell::from(format!("{process_type} total")).style(label_style),
         Cell::from(""),
         metric_cell(format_cpu(totals.cpu)),
+        metric_cell(format_switch_rate(totals.context_switch_rate)),
         metric_cell(format_bytes(
             totals.virtual_memory.map(|value| value as f64),
         )),
@@ -474,11 +490,12 @@ fn metric_cell(value: String) -> Cell<'static> {
     Cell::from(Line::from(value).right_aligned()).style(style)
 }
 
-fn process_table_constraints() -> [Constraint; 10] {
+fn process_table_constraints() -> [Constraint; 11] {
     [
         Constraint::Length(8),
         Constraint::Min(24),
         Constraint::Length(12),
+        Constraint::Length(10),
         Constraint::Length(10),
         Constraint::Length(14),
         Constraint::Length(14),
@@ -540,6 +557,12 @@ fn cpu_utilization(process: &RegisteredProcess) -> Option<f64> {
         .map(|value| value.percent)
 }
 
+fn process_context_switch_rate(process: &RegisteredProcess) -> Option<f64> {
+    process
+        .last_scheduler_record
+        .map(|record| record.context_switches_per_second)
+}
+
 fn process_type(process: &RegisteredProcess) -> &'static str {
     if process.kernel_thread() {
         "kernel"
@@ -589,6 +612,20 @@ fn format_cpu(value: Option<f64>) -> String {
     value.map_or_else(|| "-".to_string(), |value| format!("{value:.1}%"))
 }
 
+fn format_switch_rate(value: Option<f64>) -> String {
+    let Some(value) = value else {
+        return "-".to_string();
+    };
+
+    if value >= 1_000_000.0 {
+        format!("{:.1}M", value / 1_000_000.0)
+    } else if value >= 1_000.0 {
+        format!("{:.1}K", value / 1_000.0)
+    } else {
+        format!("{value:.0}")
+    }
+}
+
 fn format_bytes(value: Option<f64>) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = KIB * 1024.0;
@@ -623,6 +660,10 @@ fn sort_processes(processes: &mut [RegisteredProcess], process_sort_column: Proc
             ProcessSortColumn::Cpu => {
                 compare_optional_floats(cpu_utilization(left), cpu_utilization(right))
             }
+            ProcessSortColumn::ContextSwitchRate => compare_optional_floats(
+                process_context_switch_rate(left),
+                process_context_switch_rate(right),
+            ),
             ProcessSortColumn::VirtualMemory => {
                 process_virtual_memory(right).cmp(&process_virtual_memory(left))
             }

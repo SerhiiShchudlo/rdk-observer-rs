@@ -9,7 +9,7 @@
 //! `collector_worker` will use registered identities to collect one process or
 //! sample the selected list. Observation records will belong to `output_*`.
 
-use crate::output_model::{CpuRecord, MemoryRecord, StorageRecord};
+use crate::output_model::{CpuRecord, MemoryRecord, SchedulerRecord, StorageRecord};
 use crate::process_worker::{ProcessId, ProcessInfo};
 use hashlink::LinkedHashMap;
 use parking_lot::RwLock;
@@ -54,6 +54,7 @@ pub struct RegisteredProcess {
     pub last_io_record: Option<StorageRecord>,
     pub last_cpu_record: Option<CpuRecord>,
     pub last_memory_record: Option<MemoryRecord>,
+    pub last_scheduler_record: Option<SchedulerRecord>,
 }
 
 impl RegisteredProcess {
@@ -84,6 +85,7 @@ impl From<ProcessInfo> for RegisteredProcess {
             last_io_record: None,
             last_cpu_record: None,
             last_memory_record: None,
+            last_scheduler_record: None,
         }
     }
 }
